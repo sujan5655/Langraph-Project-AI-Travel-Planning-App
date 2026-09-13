@@ -232,28 +232,60 @@ User request:
 #         "llm_calls": state.get("llm_calls", 0) + 1,
 #     }
 
-
-
 def flight_agent(state: TravelState):
     query = state["user_query"]
     constraints = state["trip_constraints"]
-    destination = constraints["destination"]
+    
+    origin = constraints.get("origin", "")
+    destination = constraints.get("destination", "")
 
     print("\n========== FLIGHT AGENT INPUT ==========")
     print("Query:", query)
     print("Constraints:", constraints)
     print("========================================\n")
 
-    airports = asyncio.run(list_airports(destination, limit=10))
-    airlines = asyncio.run(list_airlines("", limit=10))
+    # Local city → IATA mapping (free plan cannot use search=)
+    CITY_TO_IATA = {
+        "biratnagar": "BIR",
+        "pokhara": "PKR",
+        "kathmandu": "KTM",
+        "bhadrapur": "BDP",
+        "janakpur": "JKR",
+        "nepalgunj": "KEP",
+        "bhairahawa": "BWA",
+        "simara": "SIF",
+        "dhangadhi": "DHI",
+        "tumlingtar": "TMI",
+    }
 
-    print("\n========== AIRPORT MCP DATA ==========")
-    print(airports)
-    print("======================================\n")
+    def get_iata(city: str) -> str:
+        return CITY_TO_IATA.get(city.lower().strip(), "")
 
-    print("\n========== AIRLINE MCP DATA ==========")
-    print(airlines)
-    print("======================================\n")
+    origin_iata = get_iata(origin)
+    dest_iata = get_iata(destination)
+
+    if not origin_iata or not dest_iata:
+        message = (
+            f"Could not resolve IATA codes for '{origin}' → '{destination}'. "
+            f"Supported cities: {', '.join(CITY_TO_IATA.keys())}"
+        )
+        print(message)
+        return {
+            "flight_results": message,
+            "messages": [AIMessage(content="Flight agent could not resolve airports.")],
+            "llm_calls": state.get("llm_calls", 0) + 1,
+        }
+
+    # Call the working endpoint
+    from mcp_client import get_flights   # safe even if already imported at top
+
+    flights = asyncio.run(
+        get_flights(dep_iata=origin_iata, arr_iata=dest_iata, limit=10)
+    )
+
+    print("\n========== FLIGHT MCP DATA ==========")
+    print(flights)
+    print("=====================================\n")
 
     prompt = f"""
 Create flight guidance for this trip.
@@ -264,15 +296,19 @@ User request:
 Trip constraints:
 {constraints}
 
-Airport MCP data:
-{str(airports)[:3000]}
+Resolved airports:
+- Origin: {origin} ({origin_iata})
+- Destination: {destination} ({dest_iata})
 
-Airline MCP data:
-{str(airlines)[:3000]}
+Flight data from AviationStack:
+{str(flights)[:4000]}
 
-Include likely departure/arrival airports, relevant airlines,
-estimated duration, fare range, peak season warning,
-and booking advice.
+Include:
+- available flights / airlines
+- approximate duration
+- fare range (if available)
+- best time to book
+- any practical advice for this route
 """
 
     result = _llm_text(
@@ -289,7 +325,6 @@ and booking advice.
         "messages": [AIMessage(content="Flight agent completed.")],
         "llm_calls": state.get("llm_calls", 0) + 1,
     }
-
 
 
 
@@ -402,7 +437,6 @@ Return a concise budget assessment with:
         "messages": [AIMessage(content="Budget agent completed.")],
         "llm_calls": state.get("llm_calls", 0) + 1,
     }
-
 
 
 def itinerary_agent(state: TravelState):

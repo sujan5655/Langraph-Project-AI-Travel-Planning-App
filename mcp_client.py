@@ -1,46 +1,38 @@
-import os
+import sys
+from pathlib import Path
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
-
 from config import (
     AVIATION_STACK_API_KEY,
     OPENWEATHER_API_KEY,
     TAVILY_API_KEY,
 )
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+
 # Create MCP Client
 client = MultiServerMCPClient(
     {
         "tavily": {
             "transport": "streamable_http",
-            "url": f"https://mcp.tavily.com/mcp/?tavilyApiKey={TAVILY_API_KEY}"
+            "url": f"https://mcp.tavily.com/mcp/?tavilyApiKey={TAVILY_API_KEY}",
         },
-
         "aviationstack": {
             "transport": "stdio",
-            "command": r"E:\Multi_agent_system_with_MCP\aviationstack-mcp\.venv\Scripts\python.exe",
-            "args": [
-                "-m",
-                "aviationstack_mcp",
-                "mcp",
-                "run"
-            ],
+            "command": sys.executable,
+            "args": [str(PROJECT_ROOT / "aviationstack_mcp.py")],
             "env": {
-                "AVIATION_STACK_API_KEY": AVIATION_STACK_API_KEY
-            }
-        }   ,
+                "AVIATION_STACK_API_KEY": AVIATION_STACK_API_KEY,
+            },
+        },
         "weather": {
             "transport": "stdio",
-            "command": r"E:\multi_agent_system_demo\langgraph_env3\Scripts\python.exe",
-            "args": [
-                r"E:\Multi_agent_system_with_MCP\weather_mcp_server.py"
-            ],
+            "command": sys.executable,
+            "args": [str(PROJECT_ROOT / "weather_mcp_server.py")],
             "env": {
-                "OPENWEATHER_API_KEY": OPENWEATHER_API_KEY
-            }
-        }
-
-
+                "OPENWEATHER_API_KEY": OPENWEATHER_API_KEY,
+            },
+        },
     }
 )
 
@@ -55,7 +47,6 @@ async def get_tools():
     if _tools_cache is None:
         try:
             _tools_cache = await client.get_tools()
-
         except Exception as e:
             print("\n========== FULL ERROR ==========")
             print(type(e))
@@ -72,6 +63,7 @@ async def get_tools():
 
     return _tools_cache
 
+
 async def call_tool(tool_name: str, args: dict = None):
     tools = await get_tools()
 
@@ -87,21 +79,31 @@ async def call_tool(tool_name: str, args: dict = None):
 
 
 # ------------------------
-# Tavily MCP Tools
+# Tool Wrappers
 # ------------------------
-
-
 
 async def tavily_search(query: str):
     return await call_tool("tavily_search", {"query": query})
 
 
 async def list_airports(search: str = "", limit: int = 10):
-    return await call_tool("list_airports", {"search": search, "limit": limit, "offset": 0})
+    return await call_tool("list_airports", {"search": search, "limit": limit})
 
 
 async def list_airlines(search: str = "", limit: int = 10):
-    return await call_tool("list_airlines", {"search": search, "limit": limit, "offset": 0})
+    return await call_tool("list_airlines", {"search": search, "limit": limit})
+
+
+async def get_flights(dep_iata: str = "", arr_iata: str = "", limit: int = 10):
+    """Get flights between two airports using IATA codes."""
+    return await call_tool(
+        "get_flights",
+        {
+            "dep_iata": dep_iata,
+            "arr_iata": arr_iata,
+            "limit": limit,
+        },
+    )
 
 
 async def current_weather(city: str):
