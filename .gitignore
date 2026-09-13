@@ -1,4 +1,5 @@
 .gitattributes
 __pychache__
 .env
-.venv".env" 
+.venv" 
+".venv/" 
